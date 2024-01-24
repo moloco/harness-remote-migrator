@@ -16,6 +16,8 @@ type Config struct {
 	AccountIdentifier string              `yaml:"accountIdentifier"`
 	ApiKey            string              `yaml:"apiKey"`
 	TargetProjects    []string            `yaml:"targetProjects"`
+	PipelinePaths     []string            `yaml:"pipelinePaths"`
+	TemplatePaths     []string            `yaml:"templatePaths"`
 	ExcludeProjects   []string            `yaml:"excludeProjects"`
 	GitDetails        GitDetails          `yaml:"gitDetails"`
 	FileStoreConfig   FileStoreConfig     `yaml:"fileStoreConfig"`

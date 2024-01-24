@@ -7,13 +7,14 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/aleksa11010/HarnessInlineToRemote/harness"
 	nested "github.com/antonfisher/nested-logrus-formatter"
 	"github.com/cheggaaa/pb/v3"
 	"github.com/fatih/color"
 	"github.com/go-resty/resty/v2"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v2"
+
+	"github.com/aleksa11010/HarnessInlineToRemote/harness"
 )
 
 func main() {
@@ -41,6 +42,8 @@ func main() {
 	forceServiceUpdate := flag.Bool("update-service", false, "Force update remote service manifests")
 	overridesFlag := flag.Bool("overrides", false, "Migrate service overrides")
 	urlEncoding := flag.Bool("url-encode-string", false, "Encode Paths as URL friendly strings")
+	pipelinePaths := flag.String("pipeline-paths", "", "Provide a list of pipeline paths for the corresponding projects.")
+	templatePaths := flag.String("template-paths", "", "Provide a list of template paths for the corresponding projects.")
 
 	flag.Parse()
 
@@ -94,6 +97,8 @@ func main() {
 			},
 			ExcludeProjects: strings.Split(*excludeProjects, ","),
 			TargetProjects:  strings.Split(*targetProjects, ","),
+			PipelinePaths:   strings.Split(*pipelinePaths, ","),
+			TemplatePaths:   strings.Split(*templatePaths, ","),
 		}
 	}
 
@@ -178,7 +183,7 @@ func main() {
 	var pipelines []harness.PipelineContent
 	var templates []harness.Template
 	var failedPipelines, failedTemplates []string
-	for _, project := range projectList {
+	for idx, project := range projectList {
 		p := project.Project
 		log.Infof(boldCyan.Sprintf("---Processing project %s!---", p.Name))
 		// Get all pipelines for the project
@@ -199,7 +204,11 @@ func main() {
 					if scope.UrlEncoding {
 						accountConfig.GitDetails.FilePath = "pipelines%2F" + string(p.OrgIdentifier) + "%2F" + p.Identifier + "%2F" + pipeline.Identifier + ".yaml"
 					} else {
-						accountConfig.GitDetails.FilePath = "pipelines/" + string(p.OrgIdentifier) + "/" + p.Identifier + "/" + pipeline.Identifier + ".yaml"
+						if len(accountConfig.PipelinePaths) > idx && accountConfig.PipelinePaths[idx] != "" {
+							accountConfig.GitDetails.FilePath = accountConfig.PipelinePaths[idx] + "/" + pipeline.Identifier + ".yaml"
+						} else {
+							accountConfig.GitDetails.FilePath = "pipelines/" + string(p.OrgIdentifier) + "/" + p.Identifier + "/" + pipeline.Identifier + ".yaml"
+						}
 					}
 					_, err := pipeline.MovePipelineToRemote(&api, accountConfig, string(p.OrgIdentifier), p.Identifier)
 					if err != nil {
@@ -232,18 +241,19 @@ func main() {
 						accountConfig.GitDetails.FilePath = "templates%2f" + string(p.OrgIdentifier) + "%2F" + p.Identifier + "%2F" + template.Identifier + "-" + template.VersionLabel + ".yaml"
 						template.GitDetails = accountConfig.GitDetails
 					} else {
-						accountConfig.GitDetails.FilePath = "templates/" + string(p.OrgIdentifier) + "/" + p.Identifier + "/" + template.Identifier + "-" + template.VersionLabel + ".yaml"
+						if len(accountConfig.TemplatePaths) > idx && accountConfig.TemplatePaths[idx] != "" {
+							accountConfig.GitDetails.FilePath = accountConfig.TemplatePaths[idx] + "/" + template.Identifier + ".yaml"
+						} else {
+							accountConfig.GitDetails.FilePath = "templates/" + string(p.OrgIdentifier) + "/" + p.Identifier + "/" + template.Identifier + ".yaml"
+						}
 						template.GitDetails = accountConfig.GitDetails
 					}
-					if template.StoreType == "REMOTE" {
-						log.Infof("Template [%s] Version [%s} is already remote!", template.Identifier, template.VersionLabel)
-					} else {
-						_, err := template.MoveTemplateToRemote(&api, accountConfig)
-						if err != nil {
-							log.Errorf(color.RedString("Unable to move template - %s", template.Name))
-							log.Errorf(color.RedString(err.Error()))
-							failedTemplates = append(failedTemplates, template.Name)
-						}
+
+					_, err := template.MoveTemplateToRemote(&api, accountConfig)
+					if err != nil {
+						log.Errorf(color.RedString("Unable to move template - %s", template.Name))
+						log.Errorf(color.RedString(err.Error()))
+						failedTemplates = append(failedTemplates, template.Name)
 					}
 					templateBar.Increment()
 				}
